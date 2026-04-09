@@ -135,7 +135,7 @@ Output ONLY the prompt. Under 100 words.`,
           avpImageBase64,
         }),
       });
-      const payload = (await response.json()) as StudioGenerateResponse;
+      const payload = await parseStudioApiResponse(response);
       if (!response.ok || !payload.success || !payload.prompt) {
         throw new Error(payload.error ?? "Failed to assemble studio prompt.");
       }
@@ -170,7 +170,7 @@ Output ONLY the prompt. Under 100 words.`,
           lighting: params.lighting,
         }),
       });
-      const generatePayload = (await generateResponse.json()) as StudioGenerateResponse;
+      const generatePayload = await parseStudioApiResponse(generateResponse);
       const returnedImages = generatePayload.imageUrls ?? (generatePayload.imageUrl ? [generatePayload.imageUrl] : []);
       if (!generateResponse.ok || !generatePayload.success || !returnedImages.length) {
         throw new Error(generatePayload.error ?? "Studio generation failed. Try different settings.");
@@ -204,7 +204,10 @@ Output ONLY the prompt. Under 100 words.`,
   }
 
   async function handleAvpUpload(file: File) {
-    const dataUrl = await fileToDataUrl(file);
+    const dataUrl = await optimizeImageForUpload(file, {
+      maxDimension: 1536,
+      quality: 0.86,
+    });
     setAvpPreviewUrl(dataUrl);
     setAvpImageBase64(dataUrl);
     setGeneratedVariants([]);
@@ -736,6 +739,54 @@ function fileToDataUrl(file: File): Promise<string> {
       else reject(new Error("Could not read file."));
     };
     reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function parseStudioApiResponse(response: Response): Promise<StudioGenerateResponse> {
+  const raw = await response.text();
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw) as StudioGenerateResponse;
+  } catch {
+    return { error: raw.slice(0, 400) };
+  }
+}
+
+function optimizeImageForUpload(
+  file: File,
+  options: { maxDimension: number; quality: number },
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("Could not read image file."));
+        return;
+      }
+      const image = new window.Image();
+      image.onload = () => {
+        const scale = Math.min(
+          1,
+          options.maxDimension / Math.max(image.width, image.height),
+        );
+        const width = Math.max(1, Math.round(image.width * scale));
+        const height = Math.max(1, Math.round(image.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          reject(new Error("Could not create canvas context."));
+          return;
+        }
+        context.drawImage(image, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", options.quality));
+      };
+      image.onerror = () => reject(new Error("Could not process uploaded image."));
+      image.src = reader.result;
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader failed."));
     reader.readAsDataURL(file);
   });
 }
