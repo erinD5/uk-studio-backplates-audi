@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Backplate Generator
 
-## Getting Started
+Backplate Generator is a Next.js 14 MOD BOX tool for Audi. It runs a 3-agent creative pipeline in parallel, then calls Gemini image editing to replace only the background behind an AVP car render while preserving the car's exact angle, perspective, and frame position.
 
-First, run the development server:
+The UI now supports market-aware art direction controls:
+- `Market profile`: `UK`, `EU`, or `AG (Audi Global)`
+- `Drive side`: `RHD` or `LHD`
+- `Art direction preset`: `Veith Signature`, `Cinematic Moody`, `Golden Hour Natural`, `Storm Contrast`, `Minimal Product`
+- Optional reference image uploads (up to 4) for style/mood/composition guidance
+- Reusable Art Direction Bank loaded from `public/art-direction-bank` (select images per run)
+
+## Stack
+
+- Next.js 14 (App Router) + TypeScript
+- Tailwind CSS
+- Gemini (`gemini-2.5-flash`) for the 3 parallel JSON planning agents
+- Gemini image API (`gemini-3.1-flash-image-preview`) for semantic inpainting
+
+## Environment Variables
+
+Create `.env.local`:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cp .env.example .env.local
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Set:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+GEMINI_API_KEY=your_key_here
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+All AI calls are server-side via API routes (`app/api/*`), so keys are never exposed client-side.
 
-## Learn More
+## Run Locally
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm install
+npm run dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API Routes
 
-## Deploy on Vercel
+- `POST /api/agents`
+  - Input: `{ brief: string, imageBase64: string, marketProfile?: "UK" | "EU" | "AG", driveSide?: "RHD" | "LHD", artDirectionPreset?: "VEITH_SIGNATURE" | "CINEMATIC_MOODY" | "GOLDEN_HOUR_NATURAL" | "STORM_CONTRAST" | "MINIMAL_PRODUCT", referenceImages?: [{ data: string, mimeType: "image/jpeg" | "image/png" | "image/webp" }] }`
+  - Runs Art Director, Location Scout, and Photographer in parallel with `Promise.allSettled`
+  - Returns structured outputs + assembled edit instruction
+  - Falls back gracefully if any single agent fails
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `POST /api/generate`
+  - Input: `{ imageBase64: string, instruction: string, referenceImages?: [{ data: string, mimeType: "image/jpeg" | "image/png" | "image/webp" }] }`
+  - Calls Gemini image edit endpoint
+  - Returns `{ imageBase64, mimeType }` or `{ error }`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `GET /api/art-direction-bank`
+  - Lists available bank images from `public/art-direction-bank`
+  - Use this for a persistent Audi style library your team can curate
+
+## Art Direction Bank Setup
+
+Put curated Audi reference images in:
+
+`public/art-direction-bank/`
+
+Supported formats:
+- `.jpg`
+- `.jpeg`
+- `.png`
+- `.webp`
+
+These images appear in the UI as selectable style references and are sent to both planning agents and Gemini generation.
+
+## Deploy (Vercel)
+
+1. Push to your repo.
+2. Import project into Vercel.
+3. Add `GEMINI_API_KEY` in project environment variables.
+4. Deploy.
+
+No additional server infrastructure is required.
