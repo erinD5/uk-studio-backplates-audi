@@ -731,18 +731,6 @@ Output ONLY the prompt. Under 100 words.`,
   );
 }
 
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") resolve(reader.result);
-      else reject(new Error("Could not read file."));
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-
 async function parseStudioApiResponse(response: Response): Promise<StudioGenerateResponse> {
   const raw = await response.text();
   if (!raw.trim()) return {};
